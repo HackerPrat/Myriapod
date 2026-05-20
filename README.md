@@ -1,7 +1,7 @@
 <div align="center">
   <img src="Myriapod.png" alt="Myriapod Logo" width="160" height="160" />
   
-  # 🦂 Myriapod v1.0.0
+  # Myriapod v1.0.0
   
   ### *The Ultimate Modular passive Income Swarm Engine & DePIN Aggregator*
   
