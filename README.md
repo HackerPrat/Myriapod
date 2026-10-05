@@ -24,7 +24,9 @@ Built for complete platform agnosticism, it runs seamlessly in GUI desktops, hea
 
 ## 🚀 Key Features & Capabilities (v0.1.0)
 
-- 🐳 **100% Autonomous Docker-Auto for All 32 Services**: Every single node (32/32) is fully Dockerized (`docker_mode="docker_auto"`). Zero "monitor only", zero "manual setup". All containers deploy with 1-click via Docker SDK or `docker compose`.
+- 🐳 **Autonomous Docker Swarm Orchestration**: Automated multi-container lifecycle for all supported DePIN networks. Containers deploy with 1-click via Docker SDK or raw CLI fallback.
+- ⏹️ **Granular Swarm Lifecycle Controls (Stop All & Per-Service)**: Dedicated **"⏹ Stop All Docker"** button in the dashboard toolbar and individual **"⏹ Stop" / "▶ Run"** toggles on each service card that dynamically reflect container state, remember user stop intent to prevent auto-heal restart loops, and update instantly in both GUI and Web Dashboards.
+- 🧩 **Zero-Crash Embedded DePIN Containers**: Custom self-building lightweight container images for services with deprecated or broken public Docker registries (including `myriapod_blockmesh:latest` reporting live bandwidth to the Solana Perceptron network, `myriapod_bytelixir:latest`, `myriapod_dawn:latest`, and `myriapod_grass_v7:latest`).
 - 🌐 **Embedded Mobile Web Dashboard & REST API (`--web`)**: Zero-dependency `ThreadingHTTPServer` on port `8888` serving a sleek, cyber-dark responsive single-page web app. Monitor balances, track real-time telemetry, and trigger single-click container deploy/stop actions from any browser or phone on your local network.
 - 🛰️ **RFC 5389 UDP STUN NAT Diagnostics & IP Quality Scorer (`--nat-test`)**: Pure-Python UDP STUN client probing Google/Cloudflare STUN servers. Discovers external IP and mapped ports, classifies NAT traversal (Open Internet, Full/Restricted Cone, Symmetric), performs ISP/ASN lookup, and evaluates residential earning multipliers (up to 2.5x).
 - 🚀 **Streamed Cloudflare Edge Network Benchmark Engine (`--speedtest`)**: Zero-dependency pure-Python HTTP streamed benchmark measuring download/upload throughput and latency/jitter against Cloudflare's global edge CDN. Calculates transferable monthly egress bandwidth (TB) and passive revenue yields.
@@ -75,11 +77,11 @@ graph TD
 
 ---
 
-## 📦 Supported DePIN Swarm Services (32/32 Docker-Auto)
+## 📦 Supported DePIN Swarm Services
 
-| # | Service | Category | Telemetry Mode | Payout / Reward Model | Docker Container Image | Docker Mode |
+| # | Service | Category | Telemetry Mode | Payout / Reward Model | Docker Container Image | Docker Mode / Notes |
 |---|---|---|---|---|---|---|
-| 1 | **Grass** | Bandwidth / AI | API / Session | Points → GRASS (Solana) | `myriapod_grass_v7:latest` | `docker_auto` |
+| 1 | **Grass** | Bandwidth / AI | API / Session | Points → GRASS (Solana) | `myriapod_grass_v7:latest` / Desktop Node | `docker_auto` *(Desktop Node gives 2.0x multiplier)* |
 | 2 | **Honeygain** | Bandwidth | API / OAuth | Credits → PayPal / JumpTask | `honeygain/honeygain:latest` | `docker_auto` |
 | 3 | **EarnApp** | Bandwidth | Python SDK | USD → PayPal (Auto-Payout) | `fazalfarhan01/earnapp:lite` | `docker_auto` |
 | 4 | **IPRoyal Pawns** | Bandwidth | Python SDK / API | USD → PayPal / Bitcoin | `iproyal/pawns-cli:latest` | `docker_auto` |
@@ -89,27 +91,27 @@ graph TD
 | 8 | **Repocket** | Bandwidth | JWT / API Key | USD → PayPal | `repocket/repocket:latest` | `docker_auto` |
 | 9 | **Proxyrack** | Bandwidth | Peer Dashboard | USD → PayPal / Crypto | `proxyrack/pop:latest` | `docker_auto` |
 | 10 | **Bitping** | Bandwidth | Node Status | USD → Solana | `bitping/bitpingd:latest` | `docker_auto` |
-| 11 | **Bytelixir** | Bandwidth | Auto-OCR / API | USD → Crypto | `myriapod_bytelixir:latest` | `docker_auto` |
+| 11 | **Bytelixir** | Bandwidth | Auto-OCR / API | USD → Crypto | `myriapod_bytelixir:latest` | `docker_auto` *(Embedded peer container)* |
 | 12 | **Nodepay** | Bandwidth / AI | Web3 Token | Points → Solana | `kellphy/nodepay:latest` | `docker_auto` |
-| 13 | **Dawn Network** | Bandwidth / Solana | API Token | Points → Solana | `myriapod_dawn:latest` | `docker_auto` |
+| 13 | **Dawn Network** | Bandwidth / Solana | API Token | Points → Solana | `myriapod_dawn:latest` | `docker_auto` *(Embedded keepalive container)* |
 | 14 | **PacketShare** | Bandwidth | API Key | USD → PayPal | `packetshare/packetshare:latest` | `docker_auto` |
-| 15 | **Peer2Profit** | Bandwidth | Dashboard API | USD → Crypto | `peer2profit/peer2profit_x86_64:latest` | `docker_auto` |
+| 15 | **Peer2Profit** | Bandwidth | Telegram Bot | USD → Crypto | — | `manual_guide` *(Retired / Domain inactive)* |
 | 16 | **Gradient Network** | Bandwidth / AI | API Token | Points → Solana | `mrcolorrain/gradient-bot:latest` | `docker_auto` |
-| 17 | **BlockMesh** | Bandwidth / AI | API Token | Points → Solana | `blockmesh/blockmesh-cli:latest` | `docker_auto` |
+| 17 | **BlockMesh** | Bandwidth / AI | API Key / Token | Points → Solana | `myriapod_blockmesh:latest` | `docker_auto` *(Embedded DePIN client)* |
 | 18 | **Pipe Network** | Bandwidth / CDN | Node Metrics | Points → Solana | `pipenetwork/pop-node:latest` | `docker_auto` |
 | 19 | **Titan Network** | Storage / DePIN | Local RPC / API | Points → TITAN | `nezha123/titan-edge:latest` | `docker_auto` |
 | 20 | **Bless Network** | Compute / AI | Node Status | Points → Token | `mrcolorrain/bless-bot:latest` | `docker_auto` |
 | 21 | **Mysterium** | VPN Node | TequilAPI (4449) | MYST Token → Polygon | `mysteriumnetwork/myst:latest` | `docker_auto` |
-| 22 | **Sentinel** | VPN Node | Cosmos LCD Nodes | DVPN Token → Cosmos | `ghcr.io/sentinel-official/sentinel-dvpnx:latest` | `docker_auto` |
-| 23 | **GagaNode** | Storage Node | Dashboard Token | Points → Token | `jepbura/gaganode:latest` | `docker_auto` |
-| 24 | **Storj** | Decentralized Storage | Node API (14002) | STORJ Token → Ethereum | `storjlabs/storagenode:latest` | `docker_auto` |
+| 22 | **Sentinel** | VPN Node | Cosmos LCD Nodes | DVPN Token → Cosmos | `ghcr.io/sentinel-official/sentinel-dvpnx:latest` | `docker_auto` *(Requires Keplr sent1... address)* |
+| 23 | **GagaNode** | Storage Node | Dashboard Token | Points → Token | `jepbura/gaganode:latest` | `docker_auto` *(AppHub bootstrap included)* |
+| 24 | **Storj** | Decentralized Storage | Node API (14002) | STORJ Token → Ethereum | `storjlabs/storagenode:latest` | `docker_auto` *(Binds port 14002 when running)* |
 | 25 | **Arweave** | Permanent Storage | Gateway RPC | AR Token | `arweaveteam/arweave:latest` | `docker_auto` |
 | 26 | **Theta Edge** | Video / AI Compute | RPC API | TFUEL Token | `thetalabsorg/edgelauncher_mainnet:latest` | `docker_auto` |
 | 27 | **Fluence** | Compute Cloud | Blockscout L2 | FLT Token | `fluencelabs/nox:latest` | `docker_auto` |
-| 28 | **Acurast** | Serverless Compute | Console API | ACU Token | `acurast/processor:latest` | `docker_auto` |
-| 29 | **Akash Network** | GPU Compute Cloud | Cosmos LCD | AKT Token | `ghcr.io/akash-network/provider:latest` | `docker_auto` |
-| 30 | **Flux Network** | Cloud Compute | FluxOS RPC | FLUX Token | `runonflux/flux:latest` | `docker_auto` |
-| 31 | **SubQuery** | Decentralized Indexing | Network API | SQT Token | `subquerynetwork/subql-coordinator:latest` | `docker_auto` |
+| 28 | **Acurast** | Serverless Compute | Console API | ACU Token | — | `manual_guide` *(Android mobile / secure hardware)* |
+| 29 | **Akash Network** | GPU Compute Cloud | Cosmos LCD | AKT Token | `ghcr.io/akash-network/provider:latest` | `docker_auto` *(Requires Keplr akash1... address)* |
+| 30 | **Flux Network** | Cloud Compute | FluxOS RPC | FLUX Token | `runonflux/flux:latest` | `docker_auto` *(Requires ZelID & node collateral)* |
+| 31 | **SubQuery** | Decentralized Indexing | Network API | SQT Token | — | `manual_guide` *(Multi-container indexer cluster)* |
 | 32 | **Watchtower** | System Maintenance | Docker Daemon | Auto-updates all containers | `containrrr/watchtower:latest` | `docker_auto` |
 
 ---
@@ -240,8 +242,8 @@ When running `python Myriapod.py --web`, the following JSON endpoints are live o
 
 - `GET /api/status` — Returns full swarm health, active nodes, total USD wealth, and 32-service telemetry.
 - `POST /api/poll` — Triggers an immediate asynchronous balance re-poll across all nodes.
-- `POST /api/deploy` — Body: `{"service": "<slug>"}` — Deploys the specified Docker container.
-- `POST /api/stop` — Body: `{"service": "<slug>"}` — Stops the specified Docker container.
+- `POST /api/deploy` — Body: `{"target": "all"}` or `{"target": "<slug>"}` — Deploys all or specified Docker container.
+- `POST /api/stop` — Body: `{"target": "all"}` or `{"target": "<slug>"}` — Stops all or specified Docker container.
 - `GET /api/speedtest` — Runs on-demand Cloudflare network benchmark and returns throughput metrics.
 - `GET /api/nat` — Runs RFC 5389 STUN diagnostics and returns NAT classification + IP quality score.
 - `GET /api/logs` — Streams the latest 50 entries from `myriapod.log`.
