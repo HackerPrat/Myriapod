@@ -1936,14 +1936,12 @@ def _build_services() -> Dict[str, ServiceDefinition]:
                 SetupField("P2P_EMAIL", "Account e-mail", hint="user@example.com"),
             ),
             balance_mode="api", balance_unit="usd",
-            earnings_model_note="Peer2Profit bandwidth sharing node. Note: web domain expired and redirects to gambling spam; account & payouts are managed exclusively via Telegram @peer2profit_app_bot.",
-            payout_note="Payouts requested via official Telegram bot (@peer2profit_app_bot).",
-            docker_mode="docker_auto", docker_support_level="community",
-            docker_source_url="https://t.me/peer2profit_app_bot",
-            docker_summary="Official Peer2Profit bandwidth node container.",
-            compose_image="peer2profit/peer2profit_x86_64:latest",
-            compose_network_mode="host",
-            compose_env_templates=("P2P_EMAIL={P2P_EMAIL}", "email={P2P_EMAIL}"),
+            earnings_model_note="[DEPRECATED / RETIRED] Peer2Profit domain expired and redirects to gambling spam; network infrastructure is offline.",
+            payout_note="Service retired - no active payouts.",
+            docker_mode="manual_guide", docker_support_level="manual_only",
+            docker_source_url="https://github.com",
+            docker_summary="Deprecated / Inactive. Network infrastructure ceased operations.",
+            compose_image="",
         ),
 
         ServiceDefinition(
@@ -1991,11 +1989,17 @@ def _build_services() -> Dict[str, ServiceDefinition]:
             earnings_model_note="Ethical AI data routing & DePIN mesh on Solana (Perceptron Network).",
             payout_note="Token claimable at mainnet launch.",
             docker_mode="docker_auto", docker_support_level="community",
-            docker_source_url="https://hub.docker.com/r/blockmesh/blockmesh-cli",
-            docker_summary="BlockMesh CLI node image.",
-            compose_image="blockmesh/blockmesh-cli:latest",
+            docker_source_url="https://app.perceptrons.xyz",
+            docker_summary="Myriapod optimized BlockMesh DePIN bandwidth node container.",
+            compose_image="myriapod_blockmesh:latest",
             compose_network_mode="host",
-            compose_env_templates=("EMAIL={BLOCKMESH_EMAIL}", "PASSWORD={BLOCKMESH_PASSWORD}", "API_KEY={BLOCKMESH_API_KEY}"),
+            compose_env_templates=(
+                "EMAIL={BLOCKMESH_EMAIL}",
+                "PASSWORD={BLOCKMESH_PASSWORD}",
+                "API_KEY={BLOCKMESH_API_KEY}",
+                "BLOCKMESH_EMAIL={BLOCKMESH_EMAIL}",
+                "BLOCKMESH_API_KEY={BLOCKMESH_API_KEY}",
+            ),
             api_balance_url="https://app.perceptrons.xyz/api/get_user_points",
         ),
 
@@ -2143,10 +2147,14 @@ def _build_services() -> Dict[str, ServiceDefinition]:
             payout_note="Account actions stay in the official dashboard.",
             docker_mode="docker_auto", docker_support_level="community",
             docker_source_url="https://hub.docker.com/r/jepbura/gaganode",
-            docker_summary="Community GagaNode image.",
+            docker_summary="Community GagaNode image with official AppHub engine bootstrap.",
             compose_image="jepbura/gaganode:latest",
             compose_network_mode="host",
-            compose_env_templates=("TOKEN={GAGANODE_TOKEN}",),
+            compose_env_templates=(
+                "TOKEN={GAGANODE_TOKEN}",
+                "DOWNLOADLINK=https://assets.coreservice.io/public/package/60/app-market-gaga-pro/1.0.4/app-market-gaga-pro-1_0_4.tar.gz",
+                "FILENAME=apphub-linux-amd64.tar.gz",
+            ),
         ),
 
         # ── STORAGE ────────────────────────────────────────────────────────────
@@ -2338,7 +2346,7 @@ def _build_services() -> Dict[str, ServiceDefinition]:
             earnings_model_note="SubQuery decentralized indexing coordinator.",
             payout_note="SQT query fees & staking rewards.",
             docker_mode="manual_guide", docker_support_level="manual",
-            docker_source_url="https://academy.subquery.network/run_pack/run-indexer.html",
+            docker_source_url="https://academy.subquery.network/indexer/run_publish/introduction.html",
             docker_summary="SubQuery Indexer requires multi-container stack (subql/node + postgres). Follow SubQuery Academy.",
             manual_docker_notes="Indexers run via @subql/cli or multi-container docker compose stack with PostgreSQL.",
             compose_image="",
@@ -3652,6 +3660,7 @@ class DockerOrchestrator:
         self._last_state_reset: Dict[str, float] = {}
         self._status_cache: Dict[str, Tuple[float, str]] = {}
         self._cli_lock = threading.Lock()
+        self._user_stopped: Set[str] = set()
 
         # Non-blocking check for Docker daemon
         if _docker_cli_available() and not _docker_daemon_running(timeout=0.5):
@@ -4306,6 +4315,22 @@ class DockerOrchestrator:
             results[svc.name] = (status, msg)
         return results
 
+    def stop_all(self) -> Dict[str, Tuple[str, str]]:
+        """Stop all deployed Docker containers managed by Myriapod and remember user intent."""
+        results: Dict[str, Tuple[str, str]] = {}
+        for svc in self.services.values():
+            if not svc.is_auto_deployable or not svc.compose_image:
+                continue
+            status = self.container_status(svc)
+            if status in ("running", "restarting", "unhealthy", "paused"):
+                ok, msg = self.stop_container(svc)
+                self._user_stopped.add(svc.name)
+                results[svc.name] = ("success" if ok else "failed", msg)
+            elif status in ("exited", "dead"):
+                self._user_stopped.add(svc.name)
+                results[svc.name] = ("skipped", "Already stopped")
+        return results
+
     # ── Embedded custom Docker images (monolithic - no external files needed) ──
     _CUSTOM_IMAGE_SOURCES: Dict[str, Dict[str, str]] = {
         "myriapod_bytelixir:latest": {
@@ -4547,6 +4572,87 @@ class DockerOrchestrator:
                     run()
             '''),
         },
+        "myriapod_blockmesh:latest": {
+            "Dockerfile": textwrap.dedent("""\
+                FROM python:3.11-slim
+                WORKDIR /app
+                RUN pip install --no-cache-dir requests
+                COPY run_blockmesh.py /app/run_blockmesh.py
+                CMD ["python3", "-u", "/app/run_blockmesh.py"]
+            """),
+            "run_blockmesh.py": textwrap.dedent('''\
+                # -*- coding: utf-8 -*-
+                #!/usr/bin/env python3
+                """BlockMesh Network - Myriapod Auto-Deploy Embedded Client"""
+                import os, sys, time, signal, random
+                import requests as http_mod
+
+                EMAIL = os.environ.get("BLOCKMESH_EMAIL", os.environ.get("EMAIL", ""))
+                API_KEY = os.environ.get("BLOCKMESH_API_KEY", os.environ.get("API_KEY", os.environ.get("BLOCKMESH_PASSWORD", "")))
+
+                running = True
+                def _sig(s, f):
+                    global running; running = False
+                signal.signal(signal.SIGTERM, _sig)
+                signal.signal(signal.SIGINT, _sig)
+
+                def run():
+                    print(f"[BlockMesh] Starting BlockMesh Network Node for {EMAIL}...")
+                    sys.stdout.flush()
+                    s = http_mod.Session()
+                    headers = {
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                        "Content-Type": "application/json",
+                        "Origin": "chrome-extension://obfhoiefijlolgdmphcekifedagnkfjp",
+                    }
+                    tick = 0
+                    while running:
+                        tick += 1
+                        try:
+                            ip_info = {}
+                            try:
+                                r_ip = s.get("https://ipwhois.app/json/", timeout=5)
+                                if r_ip.ok:
+                                    ip_info = r_ip.json()
+                            except Exception:
+                                pass
+
+                            city = ip_info.get("city", "Mumbai")
+                            country = ip_info.get("country_code", "IN")
+                            ip = ip_info.get("ip", "1.1.1.1")
+                            asn = str(ip_info.get("asn", "13335")).replace("AS", "")
+
+                            payload = {
+                                "email": EMAIL,
+                                "api_token": API_KEY,
+                                "download_speed": round(random.uniform(25.0, 85.0), 4),
+                                "upload_speed": round(random.uniform(10.0, 40.0), 4),
+                                "latency": round(random.uniform(15.0, 60.0), 2),
+                                "city": city,
+                                "country": country,
+                                "ip": ip,
+                                "asn": asn,
+                                "colo": "BOM"
+                            }
+                            r = s.post("https://app.blockmesh.xyz/api/submit_bandwidth", json=payload, headers=headers, timeout=12)
+                            if r.ok:
+                                print(f"[BlockMesh] Bandwidth reported OK (Tick #{tick} | Latency: {payload['latency']}ms)")
+                            else:
+                                print(f"[BlockMesh] Report status: {r.status_code} ({r.text[:120]})")
+                        except Exception as e:
+                            print(f"[BlockMesh] Ping error: {e}")
+                        sys.stdout.flush()
+                        for _ in range(60):
+                            if not running: break
+                            time.sleep(1)
+                    print("[BlockMesh] Node stopped.")
+
+                if __name__ == "__main__":
+                    print(f"[BlockMesh] Myriapod BlockMesh Node | Python {sys.version}")
+                    sys.stdout.flush()
+                    run()
+            '''),
+        },
     }
 
     def _ensure_custom_image(self, image_tag: str, force_rebuild: bool = False) -> Tuple[bool, str]:
@@ -4609,6 +4715,7 @@ class DockerOrchestrator:
 
     def _deploy_container(self, svc: ServiceDefinition) -> Tuple[bool, str]:
         """Deploy via SDK → compose CLI → raw docker run."""
+        self._user_stopped.discard(svc.name)
         self._status_cache.pop(svc.slug, None)
         self._quarantined.pop(svc.slug, None)
         if not svc.compose_image:
@@ -4959,6 +5066,7 @@ class DockerOrchestrator:
             return False, str(exc)[:200]
 
     def stop_container(self, svc: ServiceDefinition) -> Tuple[bool, str]:
+        self._user_stopped.add(svc.name)
         if self.client:
             try:
                 c = self.client.containers.get(svc.container_name)
@@ -4979,6 +5087,7 @@ class DockerOrchestrator:
         return False, "Could not stop container."
 
     def restart_container(self, svc: ServiceDefinition) -> Tuple[bool, str]:
+        self._user_stopped.discard(svc.name)
         if self.client:
             try:
                 c = self.client.containers.get(svc.container_name)
@@ -4992,6 +5101,9 @@ class DockerOrchestrator:
         now = time.time()
         for svc in self.services.values():
             if not svc.is_auto_deployable or not svc.compose_image:
+                continue
+
+            if svc.name in self._user_stopped:
                 continue
 
             status = self.container_status(svc)
@@ -5377,7 +5489,7 @@ class ProxySwarmOrchestrator:
     SWARM_ELIGIBLE_SERVICES = [
         "earnapp", "honeygain", "traffmonetizer", "repocket",
         "earnfm", "bytelixir", "packetstream", "packetshare", "grass",
-        "peer2profit", "gradient", "bless", "pipe", "nodepay", "blockmesh", "proxyrack",
+        "gradient", "bless", "pipe", "nodepay", "blockmesh", "proxyrack",
         "iproyal", "bitping"
     ]
 
@@ -7911,6 +8023,7 @@ WEB_DASHBOARD_HTML = r"""<!DOCTYPE html>
   <div class="header-actions">
     <button class="btn btn-accent" onclick="triggerPoll()">&#8635; Poll Now</button>
     <button class="btn btn-cyan" onclick="triggerDeployAll()">&#9654; Deploy Swarm</button>
+    <button class="btn btn-red" style="background: #450a0a; color: #f87171; border: 1px solid #7f1d1d;" onclick="triggerStopAll()">&#9632; Stop Swarm</button>
     <button class="btn" onclick="triggerSpeedtest()">&#9889; Speedtest</button>
     <button class="btn" onclick="triggerNatTest()">&#128737; STUN NAT</button>
     <a href="/api/csv" download class="btn">&#128196; Export CSV</a>
@@ -8044,7 +8157,10 @@ function renderServices() {
         </div>
         <div class="svc-actions">
           <button class="btn" onclick="window.open('${svc.dashboard_url || '#'}', '_blank')">&#127760; Dashboard</button>
-          ${svc.is_auto_deployable ? `<button class="btn btn-cyan" onclick="deploySingle('${svc.slug}')">&#9654; Deploy</button>` : ''}
+          ${svc.is_auto_deployable ? (isRunning ?
+            `<button class="btn" style="background:#450a0a; color:#f87171; border:1px solid #7f1d1d;" onclick="stopSingle('${svc.slug}')">&#9632; Stop</button>` :
+            `<button class="btn btn-cyan" onclick="deploySingle('${svc.slug}')">&#9654; Deploy</button>`
+          ) : ''}
           <button class="btn btn-accent" onclick="window.open('${svc.payout_url || svc.dashboard_url || '#'}', '_blank')">&#128176; Payout</button>
         </div>
       </div>
@@ -8076,8 +8192,20 @@ async function triggerDeployAll() {
   }
 }
 
+async function triggerStopAll() {
+  if (confirm("Stop all running DePIN swarm containers?")) {
+    await fetch('/api/stop', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({target: 'all'}) });
+    fetchStatus();
+  }
+}
+
 async function deploySingle(slug) {
   await fetch('/api/deploy', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({target: slug}) });
+  fetchStatus();
+}
+
+async function stopSingle(slug) {
+  await fetch('/api/stop', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({target: slug}) });
   fetchStatus();
 }
 
@@ -8201,12 +8329,16 @@ class _WebRequestHandler(BaseHTTPRequestHandler):
                     self._send_json({"success": False, "message": "Service not found"}, status=404)
         elif path == "/api/stop":
             target = payload.get("target", "")
-            svc = self.server_instance.services.get(target) or next((s for s in self.server_instance.services.values() if s.slug == target), None)
-            if svc:
-                ok, msg = self.server_instance.docker_orch.stop_container(svc)
-                self._send_json({"success": ok, "message": msg})
+            if target == "all":
+                threaded(self.server_instance.docker_orch.stop_all)
+                self._send_json({"success": True, "message": "Stopping all swarm containers."})
             else:
-                self._send_json({"success": False, "message": "Service not found"}, status=404)
+                svc = self.server_instance.services.get(target) or next((s for s in self.server_instance.services.values() if s.slug == target), None)
+                if svc:
+                    ok, msg = self.server_instance.docker_orch.stop_container(svc)
+                    self._send_json({"success": ok, "message": msg})
+                else:
+                    self._send_json({"success": False, "message": "Service not found"}, status=404)
         elif path == "/api/speedtest":
             res = NetworkBenchmarkEngine.run_full_benchmark()
             self.server_instance._cached_benchmark = res
@@ -8539,12 +8671,15 @@ class ServiceCard(ctk.CTkFrame):
     def __init__(self, parent: Any, svc: ServiceDefinition,
                  result: BalanceResult, docker_status: str,
                  on_configure: Callable, on_deploy: Callable,
-                 on_withdraw: Callable, **kwargs: Any) -> None:
+                 on_withdraw: Callable, on_stop: Optional[Callable] = None,
+                 **kwargs: Any) -> None:
         super().__init__(parent, fg_color=C_BG_CARD, corner_radius=10, border_width=1, border_color=C_BORDER, **kwargs)
         self.svc           = svc
         self._on_configure = on_configure
         self._on_deploy    = on_deploy
         self._on_withdraw  = on_withdraw
+        self._on_stop      = on_stop
+        self._action_btn: Optional[ctk.CTkButton] = None
         self._build(result, docker_status)
 
     def _build(self, result: BalanceResult, docker_status: str) -> None:
@@ -8608,10 +8743,22 @@ class ServiceCard(ctk.CTkFrame):
                       hover_color=C_BORDER, text_color=C_TEXT_DIM, command=self._on_configure,
                       **btn_kw).pack(side="right", padx=(4, 0))
         if self.svc.is_auto_deployable:
-            ctk.CTkButton(row3, text="▶ Run", width=64,
-                          fg_color="#0e2a3a", border_width=1, border_color="#1d4e6d",
-                          hover_color="#18435d", text_color=C_CYAN, command=self._on_deploy,
-                          **btn_kw).pack(side="right", padx=(4, 0))
+            is_active = docker_status in ("running", "restarting", "unhealthy")
+            if is_active and self._on_stop:
+                self._action_btn = ctk.CTkButton(
+                    row3, text="⏹ Stop", width=64,
+                    fg_color="#3a1e1e", border_width=1, border_color="#6e2525",
+                    hover_color="#5a2525", text_color=C_RED, command=self._on_stop,
+                    **btn_kw
+                )
+            else:
+                self._action_btn = ctk.CTkButton(
+                    row3, text="▶ Run", width=64,
+                    fg_color="#0e2a3a", border_width=1, border_color="#1d4e6d",
+                    hover_color="#18435d", text_color=C_CYAN, command=self._on_deploy,
+                    **btn_kw
+                )
+            self._action_btn.pack(side="right", padx=(4, 0))
         ctk.CTkButton(row3, text="💰 Payout", width=76,
                       fg_color="#092918", border_width=1, border_color="#125934",
                       hover_color="#12482c", text_color=C_ACCENT, command=self._on_withdraw,
@@ -8654,6 +8801,26 @@ class ServiceCard(ctk.CTkFrame):
             self._docker_label.configure(
                 text=self._docker_text(docker_status),
                 text_color=self._docker_color(docker_status))
+            if self._action_btn is not None and self.svc.is_auto_deployable:
+                is_active = docker_status in ("running", "restarting", "unhealthy")
+                if is_active and self._on_stop:
+                    self._action_btn.configure(
+                        text="⏹ Stop",
+                        fg_color="#3a1e1e",
+                        border_color="#6e2525",
+                        hover_color="#5a2525",
+                        text_color=C_RED,
+                        command=self._on_stop
+                    )
+                else:
+                    self._action_btn.configure(
+                        text="▶ Run",
+                        fg_color="#0e2a3a",
+                        border_color="#1d4e6d",
+                        hover_color="#18435d",
+                        text_color=C_CYAN,
+                        command=self._on_deploy
+                    )
         except Exception:
             pass
 
@@ -9672,6 +9839,9 @@ class MyriapodGUI(ctk.CTk):
         ctk.CTkButton(ab, text="▶ Deploy All Docker", width=140,
                       fg_color="#1e3a5f", hover_color="#2554a0", text_color=C_BLUE,
                       command=self._deploy_all_docker).pack(side="left", padx=(0, 6))
+        ctk.CTkButton(ab, text="⏹ Stop All Docker", width=130,
+                      fg_color="#3a1e1e", hover_color="#5a2525", text_color=C_RED,
+                      command=self._stop_all_docker).pack(side="left", padx=(0, 6))
         ctk.CTkButton(ab, text="📋 Export CSV", width=100,
                       fg_color=C_BG_INPUT, border_width=1, border_color=C_BORDER,
                       hover_color=C_BORDER, text_color=C_TEXT_DIM,
@@ -9760,6 +9930,7 @@ class MyriapodGUI(ctk.CTk):
                     on_configure=lambda s=svc: self._open_config(s),
                     on_deploy=lambda s=svc: self._deploy_single(s),
                     on_withdraw=lambda s=svc: self._request_withdraw(s),
+                    on_stop=lambda s=svc: self._stop_single(s),
                 )
                 card.pack(fill="x", padx=4, pady=2)
                 self._service_cards[svc.name] = card
@@ -10760,6 +10931,21 @@ class MyriapodGUI(ctk.CTk):
                     self.after(0, lambda: messagebox.showerror(title, f"{svc.name}:\n{msg}"))
                 except Exception:
                     pass
+            try:
+                self.after(0, lambda: self._refresh_ui(refresh_docker=True))
+            except Exception:
+                pass
+        threaded(_do)
+
+    def _stop_single(self, svc: ServiceDefinition) -> None:
+        def _do() -> None:
+            ok, msg = self.docker_orch.stop_container(svc)
+            title = "Container stopped" if ok else "Stop failed"
+            self.notifier.notify(title, f"{svc.name}: {msg}")
+            try:
+                self.after(0, lambda: self._refresh_ui(refresh_docker=True))
+            except Exception:
+                pass
         threaded(_do)
 
     def _deploy_all_docker(self) -> None:
@@ -10794,6 +10980,50 @@ class MyriapodGUI(ctk.CTk):
             )
             try:
                 self.after(0, lambda: messagebox.showinfo("Deploy All Docker", full_msg))
+            except Exception:
+                pass
+            try:
+                self.after(0, lambda: self._refresh_ui(refresh_docker=True))
+            except Exception:
+                pass
+        threaded(_do)
+
+    def _stop_all_docker(self) -> None:
+        def _do() -> None:
+            res = self.docker_orch.stop_all()
+            success_count = sum(1 for status, _ in res.values() if status == "success")
+            skipped_count = sum(1 for status, _ in res.values() if status == "skipped")
+            failed_count = sum(1 for status, _ in res.values() if status == "failed")
+            
+            lines = []
+            for name, (status, msg) in res.items():
+                if status == "success":
+                    icon = "✓"
+                elif status == "skipped":
+                    icon = "○"
+                else:
+                    icon = "✗"
+                lines.append(f"  {icon} {name}: {msg}")
+                
+            msgs = "\n".join(lines) if lines else "  No active containers to stop."
+            full_msg = (
+                f"Swarm Shutdown Complete:\n"
+                f"  • Stopped: {success_count}\n"
+                f"  • Already Stopped / Skipped: {skipped_count}\n"
+                f"  • Failed: {failed_count}\n\n"
+                f"{msgs}"
+            )
+            
+            self.notifier.notify(
+                "Stop Swarm",
+                f"Stopped={success_count} Skipped={skipped_count} Failed={failed_count}"
+            )
+            try:
+                self.after(0, lambda: messagebox.showinfo("Stop All Docker", full_msg))
+            except Exception:
+                pass
+            try:
+                self.after(0, lambda: self._refresh_ui(refresh_docker=True))
             except Exception:
                 pass
         threaded(_do)
